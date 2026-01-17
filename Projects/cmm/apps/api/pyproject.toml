@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "cmm-api"
+version = "0.1.0"
+description = "CMM FastAPI backend"
+authors = ["CMM"]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+select = ["E","F","I","UP","B"]
+

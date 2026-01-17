@@ -1,0 +1,93 @@
+version: "3.9"
+services:
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - web
+      - api
+
+  web:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: base
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://localhost/api
+    working_dir: /app/apps/web
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/web/node_modules
+    command: ["/bin/sh","-lc","cd /app && npm install --legacy-peer-deps && cd apps/web && npm run dev"]
+    ports:
+      - "3000:3000"
+
+  api:
+    build: ./apps/api
+    env_file: ./apps/api/.env.example
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://cmm:cmm@db:5432/cmm
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./apps/api:/app
+    command: ["bash","-lc","alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  iot-svc:
+    build: ./apps/iot-svc
+    env_file: ./apps/iot-svc/.env.example
+    environment:
+      - API_BASE=http://api:8000
+      - MQTT_BROKER=emqx
+      - DATABASE_URL=postgresql+psycopg2://cmm:cmm@db:5432/cmm
+    volumes:
+      - ./apps/iot-svc:/app
+    depends_on:
+      - emqx
+      - db
+
+  db:
+    image: timescale/timescaledb:2.14.2-pg15
+    environment:
+      - POSTGRES_USER=cmm
+      - POSTGRES_PASSWORD=cmm
+      - POSTGRES_DB=cmm
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U cmm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  emqx:
+    image: emqx/emqx:5.6
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+
+  minio:
+    image: minio/minio:RELEASE.2024-07-26T20-48-21Z
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+networks:
+  default:
+    driver: bridge
